@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>does anybody else</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            color: black;
+        }
+
+        .container {
+            max-width: 700px;
+            width: 100%;
+        }
+
+        .input-section {
+            margin-bottom: 60px;
+        }
+
+        .prompt {
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .question-input {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid black;
+            font-size: 24px;
+            font-weight: 300;
+            padding: 8px 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            letter-spacing: -0.5px;
+            background: transparent;
+        }
+
+        .question-input:focus {
+            outline: none;
+            border-bottom: 2px solid black;
+        }
+
+        .question-input::placeholder {
+            color: #999;
+        }
+
+        .question-input:disabled {
+            opacity: 0.5;
+        }
+
+        .results-section {
+            margin-top: 80px;
+        }
+
+        .result-item {
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-similarity {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            color: #666;
+        }
+
+        .result-question {
+            font-size: 18px;
+            font-weight: 300;
+            line-height: 1.5;
+            letter-spacing: -0.3px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 14px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #999;
+        }
+
+        .status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+            color: #999;
+        }
+
+        @media (max-width: 600px) {
+            .prompt {
+                font-size: 20px;
+            }
+
+            .question-input {
+                font-size: 20px;
+            }
+
+            .result-question {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="input-section">
+            <div class="prompt">does anybody else</div>
+            <input 
+                type="text" 
+                id="questionInput" 
+                class="question-input"
+                placeholder="..."
+                autocomplete="off"
+                disabled
+            >
+        </div>
+
+        <div id="loadingDiv" class="loading">
+            loading model...
+        </div>
+
+        <div id="resultsDiv" class="results-section hidden">
+            <div id="resultsList"></div>
+        </div>
+    </div>
+
+    <div class="status" id="status">initializing...</div>
+
+    <script type="module">
+        import { pipeline, cos_sim } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+
+        const questionInput = document.getElementById('questionInput');
+        const loadingDiv = document.getElementById('loadingDiv');
+        const resultsDiv = document.getElementById('resultsDiv');
+        const resultsList = document.getElementById('resultsList');
+        const statusDiv = document.getElementById('status');
+
+        let extractor;
+        let data = null;
+        let searchTimeout;
+
+        async function initialize() {
+            try {
+                statusDiv.textContent = 'loading questions...';
+                
+                // Load pre-computed embeddings
+                const response = await fetch('data.json');
+                data = await response.json();
+                
+                statusDiv.textContent = 'loading model...';
+                
+                // Initialize the model
+                extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+                
+                // Hide loading, enable input
+                loadingDiv.classList.add('hidden');
+                questionInput.disabled = false;
+                questionInput.focus();
+                statusDiv.textContent = `${data.questions.length} questions ready`;
+                
+                console.log('✓ Ready!');
+            } catch (error) {
+                loadingDiv.textContent = 'error loading. please refresh.';
+                statusDiv.textContent = 'error';
+                console.error('Initialization error:', error);
+            }
+        }
+
+        async function computeSimilarity(query) {
+            if (!extractor || !data) return;
+
+            // Get query embedding
+            const queryEmbedding = await extractor(query, { pooling: 'mean', normalize: true });
+            const queryArray = Array.from(queryEmbedding.data);
+
+            // Compute similarities
+            const results = data.questions.map((question, idx) => {
+                const embedding = data.embeddings[idx];
+                const similarity = cosineSimilarity(queryArray, embedding);
+                return {
+                    question,
+                    similarity,
+                    percentage: Math.round(similarity * 1000) / 10
+                };
+            });
+
+            // Sort by similarity
+            results.sort((a, b) => b.similarity - a.similarity);
+
+            return results.slice(0, 10);
+        }
+
+        function cosineSimilarity(a, b) {
+            let dotProduct = 0;
+            let normA = 0;
+            let normB = 0;
+            
+            for (let i = 0; i < a.length; i++) {
+                dotProduct += a[i] * b[i];
+                normA += a[i] * a[i];
+                normB += b[i] * b[i];
+            }
+            
+            return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+        }
+
+        function displayResults(results) {
+            resultsList.innerHTML = '';
+
+            results.forEach((result) => {
+                const item = document.createElement('div');
+                item.className = 'result-item';
+                
+                item.innerHTML = `
+                    <div class="result-similarity">${result.percentage}% similar</div>
+                    <div class="result-question">${result.question}</div>
+                `;
+
+                resultsList.appendChild(item);
+            });
+
+            resultsDiv.classList.remove('hidden');
+        }
+
+        // Search as user types
+        questionInput.addEventListener('input', async (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            if (!query) {
+                resultsDiv.classList.add('hidden');
+                return;
+            }
+
+            statusDiv.textContent = 'searching...';
+            
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const results = await computeSimilarity(query);
+                    displayResults(results);
+                    statusDiv.textContent = `${data.questions.length} questions`;
+                } catch (error) {
+                    console.error('Search error:', error);
+                    statusDiv.textContent = 'error';
+                }
+            }, 500);
+        });
+
+        // Also search on Enter
+        questionInput.addEventListener('keypress', async (e) => {
+            if (e.key === 'Enter') {
+                clearTimeout(searchTimeout);
+                const query = questionInput.value.trim();
+                if (query) {
+                    statusDiv.textContent = 'searching...';
+                    try {
+                        const results = await computeSimilarity(query);
+                        displayResults(results);
+                        statusDiv.textContent = `${data.questions.length} questions`;
+                    } catch (error) {
+                        console.error('Search error:', error);
+                        statusDiv.textContent = 'error';
+                    }
+                }
+            }
+        });
+
+        // Initialize on load
+        initialize();
+    </script>
+</body>
+</html>
+
