@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>does anybody else</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: white;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            color: black;
+        }
+
+        .container {
+            max-width: 700px;
+            width: 100%;
+        }
+
+        .input-section {
+            margin-bottom: 60px;
+        }
+
+        .prompt {
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+
+        .question-input {
+            width: 100%;
+            border: none;
+            border-bottom: 1px solid black;
+            font-size: 24px;
+            font-weight: 300;
+            padding: 8px 0;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            letter-spacing: -0.5px;
+            background: transparent;
+        }
+
+        .question-input:focus {
+            outline: none;
+            border-bottom: 2px solid black;
+        }
+
+        .question-input::placeholder {
+            color: #999;
+        }
+
+        .results-section {
+            margin-top: 80px;
+        }
+
+        .result-item {
+            margin-bottom: 40px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-similarity {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+            color: #666;
+        }
+
+        .result-question {
+            font-size: 18px;
+            font-weight: 300;
+            line-height: 1.5;
+            letter-spacing: -0.3px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 14px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: #999;
+        }
+
+        @media (max-width: 600px) {
+            .prompt {
+                font-size: 20px;
+            }
+
+            .question-input {
+                font-size: 20px;
+            }
+
+            .result-question {
+                font-size: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="input-section">
+            <div class="prompt">does anybody else</div>
+            <input 
+                type="text" 
+                id="questionInput" 
+                class="question-input"
+                placeholder="..."
+                autocomplete="off"
+                autofocus
+            >
+        </div>
+
+        <div id="loadingDiv" class="loading hidden">
+            searching...
+        </div>
+
+        <div id="resultsDiv" class="results-section hidden">
+            <div id="resultsList"></div>
+        </div>
+    </div>
+
+    <script>
+        const questionInput = document.getElementById('questionInput');
+        const loadingDiv = document.getElementById('loadingDiv');
+        const resultsDiv = document.getElementById('resultsDiv');
+        const resultsList = document.getElementById('resultsList');
+
+        let searchTimeout;
+
+        // Search as user types (with debounce)
+        questionInput.addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            const query = e.target.value.trim();
+            
+            if (!query) {
+                resultsDiv.classList.add('hidden');
+                return;
+            }
+
+            searchTimeout = setTimeout(() => {
+                performSearch(query);
+            }, 500); // Wait 500ms after user stops typing
+        });
+
+        // Also search on Enter
+        questionInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                clearTimeout(searchTimeout);
+                const query = questionInput.value.trim();
+                if (query) {
+                    performSearch(query);
+                }
+            }
+        });
+
+        async function performSearch(query) {
+            loadingDiv.classList.remove('hidden');
+            resultsDiv.classList.add('hidden');
+
+            try {
+                const response = await fetch('/api/similar', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: query,
+                        top_k: 10
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+            } finally {
+                loadingDiv.classList.add('hidden');
+            }
+        }
+
+        function displayResults(data) {
+            resultsList.innerHTML = '';
+
+            data.results.forEach((result) => {
+                const item = document.createElement('div');
+                item.className = 'result-item';
+                
+                const percentage = result.percentage;
+                
+                item.innerHTML = `
+                    <div class="result-similarity">${percentage}% similar</div>
+                    <div class="result-question">${result.question}</div>
+                `;
+
+                resultsList.appendChild(item);
+            });
+
+            resultsDiv.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
+
